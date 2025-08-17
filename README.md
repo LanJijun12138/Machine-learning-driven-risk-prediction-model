@@ -2,6 +2,7 @@
 This is a machine learning-based Streamlit web application for predicting ADL (Activities of Daily Living) disability risk in patients with low back pain.
 
 Features
+
 🎯 Intelligent Prediction: Predicts ADL disability risk based on SVM model
 
 📊 Visual Explanation: Uses SHAP waterfall charts to explain prediction results
