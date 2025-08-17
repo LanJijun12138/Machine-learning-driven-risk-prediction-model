@@ -1,14 +1,18 @@
-Model for Predicting ADL Disability Risk in Patients with Low Back Pain
+# Model for Predicting ADL Disability Risk in Patients with Low Back Pain
 This is a machine learning-based Streamlit web application for predicting ADL (Activities of Daily Living) disability risk in patients with low back pain.
 
 Features
 🎯 Intelligent Prediction: Predicts ADL disability risk based on SVM model
+
 📊 Visual Explanation: Uses SHAP waterfall charts to explain prediction results
+
 🌐 English Interface: Fully English user interface
+
 📱 Responsive Design: Supports access from various devices
+
 🔍 Feature Importance: Detailed display of each variable's impact on predictions
 
-Installation and Running
+# Installation and Running
 Method 1: Using Startup Script (Recommended)
 # Navigate to streamlit directory
 cd streamlit
