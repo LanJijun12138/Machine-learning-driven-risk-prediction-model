@@ -67,37 +67,63 @@ Input Variable Description
 The application requires input of the following 17 variables:
 
 Demographics
+
 Gender: Female(0) / Male(1)
+
 Age: 45-85 years
+
 Education Level: Below high school(1) / High school and above(2)
+
 Medical History
+
 Drinking Status: No(0) / Yes(1)
+
 Diabetes: No(0) / Yes(1)
+
 Stroke: No(0) / Yes(1)
+
 Kidney Disease: No(0) / Yes(1)
+
 Emotional Problems: No(0) / Yes(1)
+
 Memory-related Diseases: No(0) / Yes(1)
+
 Asthma: No(0) / Yes(1)
+
 Falls: No(0) / Yes(1)
+
 Depression: No(0) / Yes(1)
+
 Lifestyle
+
 Life Satisfaction: Low(1) / Medium(2) / High(3)
+
 Self-rated Health Status: Poor(1) / Fair(2) / Good(3)
+
 Physical Activity Level: Low(1) / Medium(2) / High(3)
+
 Number of Hospitalizations: ≥0
+
 Internet Participation: No(0) / Uses internet(1)
+
 Output Result Interpretation
+
 Prediction Category
+
 0: No ADL disability risk
 1: ADL disability risk exists
+
 Risk Probability
+
 Numerical value between 0-1, closer to 1 indicates higher risk
 Displayed as percentage
+
 SHAP Explanation Chart
 Shows each feature's contribution to prediction results
 Positive values: Increase risk
 Negative values: Decrease risk
 Larger absolute values indicate more significant impact
+
 Important Notes
 ⚠️ Important Reminder:
 
@@ -136,5 +162,6 @@ Model: SVM classifier
 Explainability: SHAP (SHapley Additive exPlanations)
 Data Processing: pandas + numpy
 Visualization: matplotlib + plotly
+
 License
 This project is for learning and research purposes only.
