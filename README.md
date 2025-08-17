@@ -7,6 +7,7 @@ Features
 🌐 English Interface: Fully English user interface
 📱 Responsive Design: Supports access from various devices
 🔍 Feature Importance: Detailed display of each variable's impact on predictions
+
 Installation and Running
 Method 1: Using Startup Script (Recommended)
 # Navigate to streamlit directory
