@@ -267,7 +267,8 @@ def main():
             st.markdown("**Variable Definitions:**", help="Click to view detailed explanations")
             with st.expander("📋 Variable Definitions"):
                 st.markdown("""
-                **Physical activity level**: MET-minutes/week = MET value × days × duration  
+                **Physical activity level**: The MET values are further categorized into three groups: (MET=8.0, such as climbing, running, and farming), (MET=4.0, such as brisk walking and Tai Chi), and (MET=3.3, such as casual walking).
+                MET minutes/week = MET value * days * duration. The sum of MET minutes/week corresponding to the three MET values needs to be calculated.
                 **Number of hospitalizations**: How many times have you received inpatient care during the past year?
                 """)
             
