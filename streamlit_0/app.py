@@ -1,10 +1,7 @@
 from __future__ import annotations
-
-import math
 from pathlib import Path
 import io
 from typing import Dict, List, Tuple, Optional
-
 import joblib
 import numpy as np
 import pandas as pd
@@ -12,7 +9,6 @@ import shap
 import matplotlib.pyplot as plt
 import streamlit as st
 from sklearn.preprocessing import StandardScaler
-
 
 # --------------------------------------------------------------------------------------
 # Paths and cached loaders
@@ -22,7 +18,7 @@ from sklearn.preprocessing import StandardScaler
 PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_ROOT / "data"
 MODEL_DIR = PROJECT_ROOT / "model"
-META_DIR = PROJECT_ROOT.parent / "CHARLS_18_pain"  # Keep access to variable description files
+META_DIR = PROJECT_ROOT.parent / "data"  # Keep access to variable description files
 
 
 @st.cache_resource(show_spinner=False)
@@ -48,11 +44,11 @@ def load_training_frames() -> Tuple[pd.DataFrame, pd.DataFrame]:
 
 @st.cache_data(show_spinner=False)
 def load_variable_help() -> Dict[str, str]:
-    """Parse the variable description csv to extract the text inside parentheses.
+    """Parse the variable description xlsx to extract the text inside parentheses.
 
     Returns mapping: column_name -> help_text
     """
-    meta_path = META_DIR / "Variable .csv"
+    meta_path = META_DIR / "Variable .xlsx"
     if not meta_path.exists():
         # If variable description file is not found, provide default descriptions
         default_help = {
@@ -99,8 +95,7 @@ def build_numeric_scaler(x_train_scaled: pd.DataFrame) -> Optional[StandardScale
 
     Priority of sources for mean/std:
     1) data/X_train_notscaled.csv (if present with the expected columns)
-    2) data/train_data_notscaled.csv (fallback; map column names case-insensitively)
-    3) Approximate from known ranges using scaled min/max (last resort)
+    2) Approximate from known ranges using scaled min/max (last resort)
     """
     target_cols = ["Age", "Number of hospitalizations"]
 
@@ -121,7 +116,7 @@ def build_numeric_scaler(x_train_scaled: pd.DataFrame) -> Optional[StandardScale
         # Build name mapping (case-insensitive, strip spaces/underscores)
         normalized = {c.lower().replace(" ", "").replace("_", ""): c for c in raw_df.columns}
         age_col = normalized.get("age")
-        hosp_col = normalized.get("numberofhospitalizations") or normalized.get("number_of_hospitalizations")
+        hosp_col = normalized.get("numberofhospitalizations")
         selected = []
         if age_col:
             selected.append(age_col)
@@ -133,8 +128,8 @@ def build_numeric_scaler(x_train_scaled: pd.DataFrame) -> Optional[StandardScale
 
     # 3) Last resort: approximate from scaled min/max and known raw ranges
     # This is a coarse approximation if raw means/std are not available.
-    z = x_train_scaled[target_cols].copy()
-    if set(target_cols).issubset(z.columns):
+    if set(target_cols).issubset(x_train_scaled.columns):
+        z = x_train_scaled[target_cols].copy()
         approx_mean = np.array([65.0, 0.0])  # typical defaults
         # sigma derived from span if possible
         try:
@@ -247,8 +242,8 @@ def main():
                 "Physical activity level",
                 {
                     "Low physical activity (<600 MET-min/week) (1)": 1,
-                    "Medium physical activity (600-3000) (2)": 2,
-                    "High physical activity (>3000) (3)": 3,
+                    "Medium physical activity (600-3000 MET-min/week) (2)": 2,
+                    "High physical activity (>3000 MET-min/week) (3)": 3,
                 },
                 "Low physical activity (<600 MET-min/week) (1)",
             )
