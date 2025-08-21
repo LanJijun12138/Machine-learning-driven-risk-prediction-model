@@ -102,7 +102,7 @@ Self-rated Health Status: Poor(1) / Fair(2) / Good(3)
 
 Physical Activity Level: Low(1) / Medium(2) / High(3)
 
-Number of Hospitalizations: ≥0
+Number of Hospitalizations: 0(0), At least once(1)
 
 Internet Participation: No(0) / Uses internet(1)
 
