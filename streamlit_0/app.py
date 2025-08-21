@@ -6,6 +6,8 @@ import joblib
 import numpy as np
 import pandas as pd
 import shap
+import matplotlib
+matplotlib.use('Agg')  # 设置matplotlib后端为Agg（无头模式）
 import matplotlib.pyplot as plt
 import streamlit as st
 from sklearn.preprocessing import StandardScaler
@@ -23,7 +25,7 @@ META_DIR = PROJECT_ROOT.parent / "data"  # Keep access to variable description f
 
 @st.cache_resource(show_spinner=False)
 def load_model() -> object:
-    model_path = MODEL_DIR / "svm_model.pkl"
+    model_path = MODEL_DIR / "ann_model.pkl"
     if not model_path.exists():
         raise FileNotFoundError(f"Model file not found: {model_path}")
     return joblib.load(model_path)
@@ -31,14 +33,12 @@ def load_model() -> object:
 
 @st.cache_data(show_spinner=False)
 def load_training_frames() -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """Load scaled training/test frames for feature order and SHAP background."""
-    x_train_scaled = pd.read_csv(DATA_DIR / "X_train.csv")
-    x_test_scaled = pd.read_csv(DATA_DIR / "X_test.csv")
-    # Ensure index is not treated as a feature if present
-    if x_train_scaled.columns[0] in ("Unnamed: 0", ""):
-        x_train_scaled = x_train_scaled.drop(columns=[x_train_scaled.columns[0]])
-    if x_test_scaled.columns[0] in ("Unnamed: 0", ""):
-        x_test_scaled = x_test_scaled.drop(columns=[x_test_scaled.columns[0]])
+    """Load scaled training/test frames for feature order and SHAP background.
+
+    Read with index_col=0 so the first column (saved index) is not treated as a feature.
+    """
+    x_train_scaled = pd.read_csv(DATA_DIR / "X_train.csv", index_col=0)
+    x_test_scaled = pd.read_csv(DATA_DIR / "X_test.csv", index_col=0)
     return x_train_scaled, x_test_scaled
 
 
@@ -67,7 +67,7 @@ def load_variable_help() -> Dict[str, str]:
             "Life satisfaction": "Life satisfaction (1=Low, 2=Medium, 3=High)",
             "Self perceived health status": "Self perceived health status (1=Poor, 2=Fair, 3=Good)",
             "Physical activity level": "Physical activity level (1=Low, 2=Medium, 3=High)",
-            "Number of hospitalizations": "Number of hospitalizations (≥0)",
+            "Number of hospitalizations": "Number of hospitalizations (0=0, 1=At least once)",
             "Online participation": "Online participation (0=No, 1=Uses internet)"
         }
         return default_help
@@ -91,57 +91,37 @@ def load_variable_help() -> Dict[str, str]:
 
 
 def build_numeric_scaler(x_train_scaled: pd.DataFrame) -> Optional[StandardScaler]:
-    """Create a scaler for Age and Number of hospitalizations.
+    """Create a scaler for Age only.
 
     Priority of sources for mean/std:
     1) data/X_train_notscaled.csv (if present with the expected columns)
     2) Approximate from known ranges using scaled min/max (last resort)
     """
-    target_cols = ["Age", "Number of hospitalizations"]
+    target_cols = ["Age"]
 
     # 1) Preferred: explicit unscaled training data
     unscaled_path = DATA_DIR / "X_train_notscaled.csv"
     if unscaled_path.exists():
-        df_unscaled = pd.read_csv(unscaled_path)
-        if df_unscaled.columns[0] in ("Unnamed: 0", ""):
-            df_unscaled = df_unscaled.drop(columns=[df_unscaled.columns[0]])
+        df_unscaled = pd.read_csv(unscaled_path, index_col=0)
         if all(col in df_unscaled.columns for col in target_cols):
             scaler = StandardScaler().fit(df_unscaled[target_cols])
             return scaler
 
-    # 2) Fallback to broader raw training file if available
-    generic_path = DATA_DIR / "train_data_notscaled.csv"
-    if generic_path.exists():
-        raw_df = pd.read_csv(generic_path)
-        # Build name mapping (case-insensitive, strip spaces/underscores)
-        normalized = {c.lower().replace(" ", "").replace("_", ""): c for c in raw_df.columns}
-        age_col = normalized.get("age")
-        hosp_col = normalized.get("numberofhospitalizations")
-        selected = []
-        if age_col:
-            selected.append(age_col)
-        if hosp_col:
-            selected.append(hosp_col)
-        if len(selected) == 2:
-            scaler = StandardScaler().fit(raw_df[[age_col, hosp_col]].rename(columns={age_col: "Age", hosp_col: "Number of hospitalizations"}))
-            return scaler
-
-    # 3) Last resort: approximate from scaled min/max and known raw ranges
+    # 2) Last resort: approximate from scaled min/max and known raw ranges
     # This is a coarse approximation if raw means/std are not available.
     if set(target_cols).issubset(x_train_scaled.columns):
         z = x_train_scaled[target_cols].copy()
-        approx_mean = np.array([65.0, 0.0])  # typical defaults
+        approx_mean = np.array([65.0])  # typical default for age
         # sigma derived from span if possible
         try:
             z_span = (z.max() - z.min()).values
             age_sigma = 40.0 / max(z_span[0], 1e-6)  # age range ~45..85 -> span 40
-            hosp_sigma = 5.0 / max(z_span[1], 1e-6)   # assume 0..5 typical span
-            sigma = np.array([age_sigma, hosp_sigma])
+            sigma = np.array([age_sigma])
             scaler = StandardScaler()
             scaler.mean_ = approx_mean
             scaler.scale_ = sigma
             scaler.var_ = sigma ** 2
-            scaler.n_features_in_ = 2
+            scaler.n_features_in_ = 1
             scaler.feature_names_in_ = np.array(target_cols)
             return scaler
         except Exception:
@@ -149,14 +129,14 @@ def build_numeric_scaler(x_train_scaled: pd.DataFrame) -> Optional[StandardScale
     return None
 
 
-def probability_predict_fn(model: object):
-    """Return a function f(X)->prob_class1 robust to models without predict_proba."""
-    if hasattr(model, "predict_proba"):
-        return lambda X: model.predict_proba(X)[:, 1]
-    if hasattr(model, "decision_function"):
-        return lambda X: 1.0 / (1.0 + np.exp(-model.decision_function(X)))
-    # Fallback to predict; coerce to float
-    return lambda X: model.predict(X).astype(float)
+@st.cache_resource(show_spinner=False)
+def get_shap_explainer(_model: object, x_train_scaled: pd.DataFrame):
+    """Create and cache a SHAP explainer for the model with optimized background."""
+    # 使用k-means采样减少背景数据量，提高速度
+    background_size = min(1000, len(x_train_scaled))  # 限制背景样本数量
+    background = shap.kmeans(x_train_scaled, background_size)
+    return shap.KernelExplainer(lambda X: _model.predict_proba(X)[:, 1], background)
+
 
 
 def render_title():
@@ -247,14 +227,7 @@ def main():
                 },
                 "Low physical activity (<600 MET-min/week) (1)",
             )
-            hosp_raw = cols[0].number_input(
-                "Number of hospitalizations",
-                min_value=0,
-                max_value=20,
-                value=0,
-                step=1,
-                help=variable_help.get("Number of hospitalizations", "(≥0)"),
-            )
+            hosp_raw = sb(0, "Number of hospitalizations", {"0 (0)": 0, "At least once (1)": 1}, "0 (0)")
             online = sb(1, "Online participation", {"No (0)": 0, "Uses internet (1)": 1}, "No (0)")
 
             # Add unified comments above the prediction button
@@ -262,8 +235,8 @@ def main():
             st.markdown("**Variable Definitions:**", help="Click to view detailed explanations")
             with st.expander("📋 Variable Definitions"):
                 st.markdown("""
-                **Physical activity level**: The MET values are further categorized into three groups: (MET=8.0, such as climbing, running, and farming), (MET=4.0, such as brisk walking and Tai Chi), and (MET=3.3, such as casual walking).
-                MET minutes/week = MET value * days * duration. The sum of MET minutes/week corresponding to the three MET values needs to be calculated.
+                **Physical activity level**:MET minutes/week = MET value * days * duration. The sum of MET minutes/week corresponding to the three MET values needs to be calculated.
+                                            The MET values are further categorized into three groups: (MET=8.0, such as climbing, running, and farming), (MET=4.0, such as brisk walking and Tai Chi), and (MET=3.3, such as casual walking).
                 
                 **Number of hospitalizations**: How many times have you received inpatient care during the past year?
                 """)
@@ -287,7 +260,7 @@ def main():
             "Life satisfaction": life_sat,
             "Self perceived health status": selfhea,
             "Physical activity level": pa,
-            "Number of hospitalizations": float(hosp_raw),
+            "Number of hospitalizations": hosp_raw,  # 现在是分类变量，不需要float转换
             "Online participation": online,
         }
 
@@ -297,20 +270,25 @@ def main():
         sample_df_unscaled = sample_df_unscaled[[c for c in feature_names]]
 
         # Transform numerics using scaler learned from training (unscaled -> scaled)
-        numerics = [c for c in ["Age", "Number of hospitalizations"] if c in sample_df_unscaled.columns]
+        numerics = ["Age"]  # Only Age needs scaling now
         scaled_values = sample_df_unscaled.copy()
         if numerics and scaler is not None:
             scaled_values[numerics] = scaler.transform(sample_df_unscaled[numerics])
         else:
             st.warning(
-                "Automatic standardization for Age and Number of hospitalizations is not available. "
+                "Automatic standardization for Age is not available. "
                 "Please enter standardized values (z-scores) directly."
             )
 
         if submitted:
-            pred_fn = probability_predict_fn(model)
-            proba = float(pred_fn(scaled_values)[0])
-            predicted_class = int(proba >= 0.5)
+            # 使用最准确有效的预测概率方法
+            try:
+                # 直接使用模型的predict_proba方法
+                proba = float(model.predict_proba(scaled_values)[0, 1])
+                predicted_class = int(proba >= 0.5)
+            except Exception as e:
+                st.error(f"预测失败: {e}")
+                return
 
             # Display prediction results
             st.subheader("Prediction Results")
@@ -333,22 +311,26 @@ def main():
             # Explain with SHAP Waterfall
             st.subheader("SHAP Feature Importance Explanation")
             with st.spinner("Calculating SHAP explanation..."):
-                # Background: small, for performance
-                background = x_train_scaled.sample(
-                    n=min(100, len(x_train_scaled)), random_state=6
-                )
-                explainer = shap.Explainer(pred_fn, background, feature_names=feature_names)
-                explanation = explainer(scaled_values)
-
-                # Waterfall plot centered and taking half width
-                col1, col2, col3 = st.columns([1, 2, 1])
-                with col2:
-                    shap.plots.waterfall(explanation[0], max_display=10, show=False)
-                    fig = plt.gcf()
-                    st.pyplot(fig, use_container_width=True)
-                
-                # Add explanation
-                st.info("💡 SHAP plot shows the contribution of each feature to the prediction result. Positive values indicate increased risk, negative values indicate decreased risk.")
+                try:
+                    # 使用缓存的SHAP explainer
+                    explainer = get_shap_explainer(model, x_train_scaled)
+                    shap_values = explainer(scaled_values)
+                    
+                    # Waterfall plot centered and taking half width
+                    col1, col2, col3 = st.columns([1, 2, 1])
+                    with col2:
+                        # 确保matplotlib使用Agg后端（无头模式）
+                        plt.switch_backend('Agg')
+                        shap.plots.waterfall(shap_values[0], max_display=10, show=False)
+                        fig = plt.gcf()
+                        st.pyplot(fig, use_container_width=True)
+                        plt.close(fig)  # 清理图形避免内存泄漏
+                    
+                    # Add explanation
+                    st.info("💡 SHAP plot shows the contribution of each feature to the prediction result. Positive values indicate increased risk, negative values indicate decreased risk.")
+                except Exception as e:
+                    st.error(f"SHAP分析失败: {e}")
+                    st.info("请检查模型和数据是否正确加载。")
 
             st.warning("⚠️ Important Reminder: This tool provides data-driven estimates and should not replace professional medical advice.")
 
@@ -365,7 +347,7 @@ def main():
             - SHAP Plot: Shows the impact of each feature on the prediction result
             
             **Notes:**
-            - Age and number of hospitalizations are automatically standardized
+            - Age is automatically standardized
             - All categorical variables are encoded as numerical values
             - Model is based on training data, actual application requires clinical judgment
             """)
